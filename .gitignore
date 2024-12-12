@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Serverless
+.serverless/
+.env
+
+# PDFs y archivos de prueba
+*.pdf
+
+# Logs
+*.log
+
+# Sistema operativo
+.DS_Store
+Thumbs.db

@@ -1,0 +1,132 @@
+service: pdf-timestamping-service-v0
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+  stage: dev
+  environment:
+    PDF_BUCKET: ${self:service}-pdfs-${sls:stage}
+    OTS_BUCKET: ${self:service}-timestamps-${sls:stage}
+    DYNAMODB_TABLE: ${self:service}-documents-${sls:stage}
+  apiGateway:
+    apiKeys:
+      - name: pdf-timestamping-key-${sls:stage}
+        description: API Key for PDF Timestamping Service
+    usagePlan:
+      quota:
+        limit: 1000
+        period: MONTH
+      throttle:
+        burstLimit: 20
+        rateLimit: 10
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - s3:PutObject
+        - s3:GetObject
+        - dynamodb:PutItem
+        - dynamodb:GetItem
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:UpdateItem
+      Resource: 
+        - "arn:aws:s3:::${self:provider.environment.PDF_BUCKET}/*"
+        - "arn:aws:s3:::${self:provider.environment.OTS_BUCKET}/*"
+        - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/${self:provider.environment.DYNAMODB_TABLE}"
+
+functions:
+  upload:
+    handler: src/handlers/upload.upload
+    events:
+      - http:
+          path: upload
+          method: post
+          private: true
+          cors: true
+  validate:
+    handler: src/handlers/validate.validate
+    events:
+      - http:
+          path: validate/{code}
+          method: get
+          private: true
+          cors: true
+  list:
+    handler: src/handlers/list.list
+    events:
+      - http:
+          path: list
+          method: get
+          private: true
+          cors: true
+  checkPendingDocuments:
+    handler: src/handlers/cron.checkPendingDocuments
+    events:
+      - schedule: rate(30 minutes)
+
+resources:
+  Resources:
+    DocumentsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DYNAMODB_TABLE}
+        AttributeDefinitions:
+          - AttributeName: code
+            AttributeType: S
+        KeySchema:
+          - AttributeName: code
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+    PdfBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.PDF_BUCKET}
+        CorsConfiguration:
+          CorsRules:
+            - AllowedOrigins:
+                - '*'
+              AllowedHeaders:
+                - '*'
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+                - HEAD
+              MaxAge: 3000
+    OtsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.OTS_BUCKET}
+        CorsConfiguration:
+          CorsRules:
+            - AllowedOrigins:
+                - '*'
+              AllowedHeaders:
+                - '*'
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+                - HEAD
+              MaxAge: 3000
+
+custom:
+  cors:
+    origin: '*'
+    headers:
+      - Content-Type
+      - X-Amz-Date
+      - Authorization
+      - X-Api-Key
+      - X-Amz-Security-Token
+      - X-Amz-User-Agent
+      - x-filename
+      - x-empresa
+      - x-provincia
+      - x-emisiones-co2
+      - x-consumo-energia
+      - x-certificador-email
+      - x-certificador-name
