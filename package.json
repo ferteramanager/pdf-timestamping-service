@@ -1,11 +1,23 @@
 {
-  "name": "pdf-timestamping-service",
+  "name": "pdf-timestamping-service-v1",
   "version": "1.0.0",
   "description": "PDF timestamping service using OpenTimestamps",
   "main": "index.js",
+  "engines": {
+    "node": "18.x"
+  },
   "scripts": {
     "deploy": "serverless deploy",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "deploy:dev": "serverless deploy --stage dev",
+    "deploy:prod": "serverless deploy --stage prod",
+    "remove": "serverless remove",
+    "remove:dev": "serverless remove --stage dev",
+    "remove:prod": "serverless remove --stage prod",
+    "dev": "serverless offline",
+    "logs:upload": "serverless logs -f upload",
+    "logs:validate": "serverless logs -f validate",
+    "logs:list": "serverless logs -f list",
+    "logs:cron": "serverless logs -f checkPendingDocuments"
   },
   "dependencies": {
     "aws-sdk": "^2.1692.0",
@@ -13,6 +25,8 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "serverless": "^3.35.2"
+    "serverless": "^3.35.2",
+    "serverless-dotenv-plugin": "^6.0.0",
+    "serverless-offline": "^12.0.4"
   }
 }

@@ -12,10 +12,30 @@ const generateCode = (hash) => {
   return `${hashPart}-${uuid}`.toUpperCase();
 };
 
+const validateCUIT = (cuit) => {
+  return /^\d{11}$/.test(cuit);
+};
+
+const validateRENSPA = (renspa) => {
+  return /^\d{2}\.\d{3}\.\d{1}\.\d{5}\/\d{2}$/.test(renspa);
+};
+
 const upload = async (event) => {
   try {
-    const pdfContent = Buffer.from(event.body, 'base64');
+    console.log('Headers:', event.headers);
+    console.log('Content Length:', event.body.length);
+    console.log('Is Base64:', event.isBase64Encoded);
+
+    // Manejo del contenido del PDF
+    const pdfContent = event.isBase64Encoded 
+      ? Buffer.from(event.body, 'base64')
+      : event.body;
+
+    console.log('PDF Content Length:', pdfContent.length);
+
     const headers = event.headers;
+    
+    // Headers existentes
     const filename = headers['x-filename'];
     const empresa = headers['x-empresa'];
     const provincia = headers['x-provincia'];
@@ -24,18 +44,64 @@ const upload = async (event) => {
     const certificadorEmail = headers['x-certificador-email'];
     const certificadorName = headers['x-certificador-name'];
 
+    // Nuevos headers
+    const cuitPropietario = headers['x-cuit-propietario'];
+    const nombrePropietario = headers['x-nombre-propietario'];
+    const renspa = headers['x-renspa'];
+    const periodoCertificado = headers['x-periodo-certificado'];
+    const resultadoCertificacion = headers['x-resultado-certificacion'];
+
+    // Validaciones
+    if (!cuitPropietario || !validateCUIT(cuitPropietario)) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'CUIT inválido. Debe contener 11 dígitos'
+        })
+      };
+    }
+
+    if (!renspa || !validateRENSPA(renspa)) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          error: 'RENSPA inválido. Formato requerido: XX.XXX.X.XXXXX/XX'
+        })
+      };
+    }
+
     const now = new Date().toISOString();
     const hash = crypto.createHash('sha256').update(pdfContent).digest('hex');
     const code = generateCode(hash);
     const timestamp = await generateTimestamp(pdfContent);
 
-    // Store PDF
+    // Store PDF con configuración mejorada
     await s3.putObject({
       Bucket: process.env.PDF_BUCKET,
       Key: `${code}/${filename}`,
       Body: pdfContent,
-      ContentType: 'application/pdf'
+      ContentType: 'application/pdf',
+      ContentDisposition: 'inline',
+      ContentLength: pdfContent.length,
+      Metadata: {
+        'original-filename': filename,
+        'document-hash': hash
+      }
     }).promise();
+
+    // Verificar objeto guardado
+    const headObject = await s3.headObject({
+      Bucket: process.env.PDF_BUCKET,
+      Key: `${code}/${filename}`
+    }).promise();
+    
+    console.log('Stored object info:', headObject);
 
     // Store OTS
     await s3.putObject({
@@ -66,6 +132,16 @@ const upload = async (event) => {
         name: certificadorName,
         timestamp: now
       },
+      propietario: {
+        cuit: cuitPropietario,
+        nombre: nombrePropietario,
+        renspa: renspa
+      },
+      certificacion: {
+        periodo: periodoCertificado,
+        resultado: resultadoCertificacion,
+        fechaRegistro: now
+      },
       s3Path: `${code}/${filename}`
     };
 
@@ -77,14 +153,17 @@ const upload = async (event) => {
     return {
       statusCode: 200,
       headers: {
-        'Access-Control-Allow-Origin': '*'
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         code,
         message: 'Document processed successfully',
         documentHash: hash,
         status: 'STAMPING',
-        timeline: item.timeline
+        timeline: item.timeline,
+        propietario: item.propietario,
+        certificacion: item.certificacion
       })
     };
   } catch (error) {
@@ -92,10 +171,12 @@ const upload = async (event) => {
     return {
       statusCode: 500,
       headers: {
-        'Access-Control-Allow-Origin': '*'
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        error: 'Error processing document'
+        error: 'Error processing document',
+        details: error.message
       })
     };
   }

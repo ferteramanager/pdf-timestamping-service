@@ -1,6 +1,10 @@
-service: pdf-timestamping-service-v0
+service: pdf-timestamping-service-v1
 
 frameworkVersion: '3'
+
+plugins:
+  - serverless-dotenv-plugin
+  - serverless-offline
 
 provider:
   name: aws
@@ -8,12 +12,12 @@ provider:
   region: us-east-1
   stage: dev
   environment:
-    PDF_BUCKET: ${self:service}-pdfs-${sls:stage}
-    OTS_BUCKET: ${self:service}-timestamps-${sls:stage}
-    DYNAMODB_TABLE: ${self:service}-documents-${sls:stage}
+    PDF_BUCKET: pdf-timestamping-v1-pdfs-dev
+    OTS_BUCKET: pdf-timestamping-v1-timestamps-dev
+    DYNAMODB_TABLE: pdf-timestamping-v1-documents-dev
   apiGateway:
     apiKeys:
-      - name: pdf-timestamping-key-${sls:stage}
+      - name: ${self:service}-key-${sls:stage}
         description: API Key for PDF Timestamping Service
     usagePlan:
       quota:
@@ -22,20 +26,25 @@ provider:
       throttle:
         burstLimit: 20
         rateLimit: 10
+    binaryMediaTypes:
+      - '*/*'
   iamRoleStatements:
     - Effect: Allow
       Action:
         - s3:PutObject
         - s3:GetObject
+        - s3:HeadObject
+      Resource: 
+        - "arn:aws:s3:::${self:provider.environment.PDF_BUCKET}/*"
+        - "arn:aws:s3:::${self:provider.environment.OTS_BUCKET}/*"
+    - Effect: Allow
+      Action:
         - dynamodb:PutItem
         - dynamodb:GetItem
         - dynamodb:Query
         - dynamodb:Scan
         - dynamodb:UpdateItem
-      Resource: 
-        - "arn:aws:s3:::${self:provider.environment.PDF_BUCKET}/*"
-        - "arn:aws:s3:::${self:provider.environment.OTS_BUCKET}/*"
-        - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/${self:provider.environment.DYNAMODB_TABLE}"
+      Resource: "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/${self:provider.environment.DYNAMODB_TABLE}"
 
 functions:
   upload:
@@ -46,6 +55,8 @@ functions:
           method: post
           private: true
           cors: true
+          integration: lambda-proxy
+          contentHandling: CONVERT_TO_BINARY
   validate:
     handler: src/handlers/validate.validate
     events:
@@ -66,6 +77,29 @@ functions:
     handler: src/handlers/cron.checkPendingDocuments
     events:
       - schedule: rate(30 minutes)
+
+custom:
+  cors:
+    origin: '*'
+    headers:
+      - Content-Type
+      - X-Amz-Date
+      - Authorization
+      - X-Api-Key
+      - X-Amz-Security-Token
+      - X-Amz-User-Agent
+      - x-filename
+      - x-empresa
+      - x-provincia
+      - x-emisiones-co2
+      - x-consumo-energia
+      - x-certificador-email
+      - x-certificador-name
+      - x-cuit-propietario
+      - x-nombre-propietario
+      - x-renspa
+      - x-periodo-certificado
+      - x-resultado-certificacion
 
 resources:
   Resources:
@@ -112,21 +146,3 @@ resources:
                 - POST
                 - HEAD
               MaxAge: 3000
-
-custom:
-  cors:
-    origin: '*'
-    headers:
-      - Content-Type
-      - X-Amz-Date
-      - Authorization
-      - X-Api-Key
-      - X-Amz-Security-Token
-      - X-Amz-User-Agent
-      - x-filename
-      - x-empresa
-      - x-provincia
-      - x-emisiones-co2
-      - x-consumo-energia
-      - x-certificador-email
-      - x-certificador-name

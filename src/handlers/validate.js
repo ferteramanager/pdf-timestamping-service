@@ -68,7 +68,7 @@ const validate = async (event) => {
       const verificationResult = await verifyTimestamp(ots.Body, pdf.Body);
       const urls = await getPresignedUrls(code, result.Item.s3Path);
 
-      // Si el estado ha cambiado a CONFIRMED, actualizamos DynamoDB
+      // Update status if confirmed
       if (verificationResult.status === 'CONFIRMED' && result.Item.status !== 'CONFIRMED') {
         await dynamodb.update({
           TableName: process.env.DYNAMODB_TABLE,
@@ -88,21 +88,32 @@ const validate = async (event) => {
 
       return {
         statusCode: 200,
+        headers: {
+          'Access-Control-Allow-Origin': '*'
+        },
         body: JSON.stringify({
           code,
           status: verificationResult.status,
+          verified: verificationResult.status === 'CONFIRMED',
           documentHash: result.Item.documentHash,
+          timestamp: {
+            bitcoin: verificationResult.blockchain
+          },
           timeline: result.Item.timeline,
           lifecycle: result.Item.lifecycle || [],
-          verificationResult,
-          downloads: urls,
+          downloads: {
+            pdf: urls.pdfUrl,
+            ots: urls.otsUrl
+          },
           documentInfo: {
             filename: result.Item.filename,
             empresa: result.Item.empresa,
             provincia: result.Item.provincia,
             emisionesCO2: result.Item.emisionesCO2,
             consumoEnergia: result.Item.consumoEnergia,
-            certificador: result.Item.certificador
+            certificador: result.Item.certificador,
+            propietario: result.Item.propietario,
+            certificacion: result.Item.certificacion
           }
         })
       };
@@ -114,6 +125,9 @@ const validate = async (event) => {
       
       return {
         statusCode: 200,
+        headers: {
+          'Access-Control-Allow-Origin': '*'
+        },
         body: JSON.stringify({
           code,
           status: 'STAMPING',
@@ -121,14 +135,19 @@ const validate = async (event) => {
           message: 'Document is still in stamping process. Please try again later.',
           timeline: result.Item.timeline,
           lifecycle: result.Item.lifecycle || [],
-          downloads: urls,
+          downloads: {
+            pdf: urls.pdfUrl,
+            ots: urls.otsUrl
+          },
           documentInfo: {
             filename: result.Item.filename,
             empresa: result.Item.empresa,
             provincia: result.Item.provincia,
             emisionesCO2: result.Item.emisionesCO2,
             consumoEnergia: result.Item.consumoEnergia,
-            certificador: result.Item.certificador
+            certificador: result.Item.certificador,
+            propietario: result.Item.propietario,
+            certificacion: result.Item.certificacion
           },
           estimatedTime: 'The stamping process usually takes between 30-60 minutes'
         })
